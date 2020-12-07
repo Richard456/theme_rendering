@@ -29,7 +29,7 @@ def check_paths(args):
 
 
 def train(args):
-    device = torch.device("cuda" if args.cuda else "cpu")
+    device = torch.device("cuda:{}".format(args.gpu) if args.cuda else "cpu")
 
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -63,7 +63,7 @@ def train(args):
     style_batch = []
 
     for i in range(style_num):
-        style = utils.load_image(args.style_image + style_image[i], size=args.style_size)
+        style = utils.load_image(args.style_image + '/' + style_image[i], size=args.style_size)
         style = style_transform(style)
         style_batch.append(style)
 
@@ -109,9 +109,9 @@ def train(args):
             agg_content_loss += content_loss.item()
             agg_style_loss += style_loss.item()
 
-            if (batch_id + 1) % args.log_interval == 0:
+            if batch_id  % 10 == 0:
                 mesg = "{}\tEpoch {}:\t[{}/{}]\tcontent: {:.6f}\tstyle: {:.6f}\ttotal: {:.6f}".format(
-                    time.ctime(), e + 1, count, len(train_dataset),
+                    time.ctime(), e + 1, batch_id, len(train_loader),
                                   agg_content_loss / (batch_id + 1),
                                   agg_style_loss / (batch_id + 1),
                                   (agg_content_loss + agg_style_loss) / (batch_id + 1)
@@ -136,7 +136,7 @@ def train(args):
 
 
 def stylize(args):
-    device = torch.device("cuda" if args.cuda else "cpu")
+    device = torch.device("cuda:{}".format(args.gpu) if args.cuda else "cpu")
 
     content_image = utils.load_image(args.content_image, scale=args.content_scale)
     content_transform = transforms.Compose([
@@ -152,9 +152,9 @@ def stylize(args):
         state_dict = torch.load(args.model)
         style_model.load_state_dict(state_dict)
         style_model.to(device)
-        output = style_model(content_image, style_id = [args.style_id]).cpu()
+        output = style_model(content_image, style_id = args.style_id).cpu()
 
-    utils.save_image('output/'+args.output_image+'_style'+str(args.style_id)+'.jpg', output[0])
+    utils.save_image(args.output_image+'/' + 'style'+str(args.style_id)+'.jpg', output[0])
 
 def main():
     main_arg_parser = argparse.ArgumentParser(description="parser for fast-neural-style")
@@ -162,15 +162,15 @@ def main():
 
     train_arg_parser = subparsers.add_parser("train", help="parser for training arguments")
     train_arg_parser.add_argument("--epochs", type=int, default=1,
-                                  help="number of training epochs, default is 2")
-    train_arg_parser.add_argument("--batch-size", type=int, default=4,
-                                  help="batch size for training, default is 4")
-    train_arg_parser.add_argument("--dataset", type=str, required=True,
+                                  help="number of training epochs, default is 1")
+    train_arg_parser.add_argument("--batch-size", type=int, default=10,
+                                  help="batch size for training, default is 10")
+    train_arg_parser.add_argument("--dataset", type=str, default = 'train-images',
                                   help="path to training dataset, the path should point to a folder "
                                        "containing another folder with all the training images")
-    train_arg_parser.add_argument("--style-image", type=str, default="images/style-images/",
+    train_arg_parser.add_argument("--style-image", type=str, default="style-images/images",
                                   help="path to style-image")
-    train_arg_parser.add_argument("--save-model-dir", type=str, required=True,
+    train_arg_parser.add_argument("--save-model-dir", type=str, default = 'saved_models',
                                   help="path to folder where trained model will be saved.")
     train_arg_parser.add_argument("--checkpoint-model-dir", type=str, default=None,
                                   help="path to folder where checkpoints of trained models will be saved")
@@ -178,8 +178,10 @@ def main():
                                   help="size of training images, default is 256 X 256")
     train_arg_parser.add_argument("--style-size", type=int, default=512,
                                   help="size of style-image, default is the original size of style image")
-    train_arg_parser.add_argument("--cuda", type=int, required=True,
+    train_arg_parser.add_argument("--cuda", type=int, default=1,
                                   help="set it to 1 for running on GPU, 0 for CPU")
+    train_arg_parser.add_argument("--gpu", type=int, default=0,
+                                  help="device id")
     train_arg_parser.add_argument("--seed", type=int, default=42,
                                   help="random seed for training")
     train_arg_parser.add_argument("--content-weight", type=float, default=1e5,
@@ -194,17 +196,19 @@ def main():
                                   help="number of batches after which a checkpoint of the trained model will be created")
 
     eval_arg_parser = subparsers.add_parser("eval", help="parser for evaluation/stylizing arguments")
-    eval_arg_parser.add_argument("--content-image", type=str, required=True,
+    eval_arg_parser.add_argument("--content-image", type=str, default="images/content_images/lamborghini-sian.jpg",
                                  help="path to content image you want to stylize")
     eval_arg_parser.add_argument("--content-scale", type=float, default=None,
                                  help="factor for scaling down the content image")
-    eval_arg_parser.add_argument("--output-image", type=str, required=True,
+    eval_arg_parser.add_argument("--output-image", type=str, default="images/output_images",
                                  help="path for saving the output image")
-    eval_arg_parser.add_argument("--model", type=str, required=True,
+    eval_arg_parser.add_argument("--model", type=str, default = 'saved_models/epoch_1_Wed_Dec__2_032448_2020_100000_10000000000.model',
                                  help="saved model to be used for stylizing the image. If file ends in .pth - PyTorch path is used, if in .onnx - Caffe2 path")
-    eval_arg_parser.add_argument("--cuda", type=int, required=True,
+    eval_arg_parser.add_argument("--cuda", type=int, default=1,
                                  help="set it to 1 for running on GPU, 0 for CPU")
-    eval_arg_parser.add_argument("--style-id", type=int, required = True,
+    eval_arg_parser.add_argument("--gpu", type=int, default=0,
+                                  help="device id")
+    eval_arg_parser.add_argument("--style-id", type=list, default = [1],
                                  help="style number id corresponding to the order in training")
     eval_arg_parser.add_argument("--batch-size", type=int, default=4,
                                   help="batch size for testing, default is 4")

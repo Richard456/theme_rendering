@@ -3,16 +3,17 @@
 
 import torch
 
+
 class TransformerNet(torch.nn.Module):
     def __init__(self, style_num):
         super(TransformerNet, self).__init__()
-        self.conv1 = ConvLayer(3, 32, kernel_size = 9, stride = 1) 
+        self.conv1 = ConvLayer(3, 32, kernel_size=9, stride=1)
         self.in1 = batch_InstanceNorm2d(style_num, 32)
 
-        self.conv2 = ConvLayer(32, 64, kernel_size = 3, stride = 2)
+        self.conv2 = ConvLayer(32, 64, kernel_size=3, stride=2)
         self.in2 = batch_InstanceNorm2d(style_num, 64)
 
-        self.conv3 = ConvLayer(64, 128, kernel_size = 3, stride = 2)
+        self.conv3 = ConvLayer(64, 128, kernel_size=3, stride=2)
         self.in3 = batch_InstanceNorm2d(style_num, 128)
 
         self.res1 = ResidualBlock(128)
@@ -20,15 +21,14 @@ class TransformerNet(torch.nn.Module):
         self.res3 = ResidualBlock(128)
         self.res4 = ResidualBlock(128)
         self.res5 = ResidualBlock(128)
-        self.deconv1 = UpsampleConvLayer(128, 64, kernel_size = 3, stride = 1, upsample = 2)
+        self.deconv1 = UpsampleConvLayer(128, 64, kernel_size=3, stride=1, upsample=2)
         self.in4 = batch_InstanceNorm2d(style_num, 64)
-        self.deconv2 = UpsampleConvLayer(64, 32, kernel_size = 3, stride = 1, upsample = 2)
+        self.deconv2 = UpsampleConvLayer(64, 32, kernel_size=3, stride=1, upsample=2)
         self.in5 = batch_InstanceNorm2d(style_num, 32)
-        self.deconv3 = ConvLayer(32, 3, kernel_size = 9, stride = 1)
+        self.deconv3 = ConvLayer(32, 3, kernel_size=9, stride=1)
         self.relu = torch.nn.ReLU()
 
     def forward(self, X, style_id):
- 
         y = self.relu(self.in1(self.conv1(X), style_id))
         y = self.relu(self.in2(self.conv2(y), style_id))
         y = self.relu(self.in3(self.conv3(y), style_id))
@@ -39,9 +39,10 @@ class TransformerNet(torch.nn.Module):
         y = self.res5(y)
         y = self.relu(self.in4(self.deconv1(y), style_id))
         y = self.relu(self.in5(self.deconv2(y), style_id))
-        y = self.deconv3(y) 
-        
+        y = self.deconv3(y)
+
         return y
+
 
 class batch_InstanceNorm2d(torch.nn.Module):
     """
@@ -49,6 +50,7 @@ class batch_InstanceNorm2d(torch.nn.Module):
     introduced in https://arxiv.org/abs/1610.07629
     created and applied based on my limited understanding, could be improved
     """
+
     def __init__(self, style_num, in_channels):
         super(batch_InstanceNorm2d, self).__init__()
         self.inns = torch.nn.ModuleList([torch.nn.InstanceNorm2d(in_channels, affine=True) for i in range(style_num)])
@@ -57,12 +59,13 @@ class batch_InstanceNorm2d(torch.nn.Module):
         out = torch.stack([self.inns[style_id[i]](x[i].unsqueeze(0)).squeeze_(0) for i in range(len(style_id))])
         return out
 
+
 class ConvLayer(torch.nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride):
         super(ConvLayer, self).__init__()
-        reflection_padding = kernel_size // 2 # same dimension after padding
+        reflection_padding = kernel_size // 2  # same dimension after padding
         self.reflection_pad = torch.nn.ReflectionPad2d(reflection_padding)
-        self.conv2d = torch.nn.Conv2d(in_channels, out_channels, kernel_size, stride) # remember this dimension
+        self.conv2d = torch.nn.Conv2d(in_channels, out_channels, kernel_size, stride)  # remember this dimension
 
     def forward(self, x):
         out = self.reflection_pad(x)
@@ -88,7 +91,7 @@ class ResidualBlock(torch.nn.Module):
         residual = x
         out = self.relu(self.in1(self.conv1(x)))
         out = self.in2(self.conv2(out))
-        out = out + residual # need relu right after
+        out = out + residual  # need relu right after
         return out
 
 

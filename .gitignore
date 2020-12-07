@@ -1,6 +1,12 @@
-run.txt
 __pycache__/*
-content/*
-output/*
-style/*
 checkpoint/*
+coco/*
+coco-2017/*
+images/*
+style-images/*
+train-images/*
+neural_style.py
+train2014.zip
+transformer_net.py
+
+

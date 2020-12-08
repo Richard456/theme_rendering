@@ -17,11 +17,12 @@ from PIL import Image
 
 manual_seed = 8888
 train_size = (480,640)
-eval_size = (810,1080)
+eval_size = (1080,810)
 content_dataset_path = "coco-2017"
 style_dataset_path = "filter_images"
 log_interval = 50
 subset_size = 5000
+total_filters = 9
 
 Mean = [0.5, 0.5, 0.5]
 Std = [0.2, 0.2, 0.2]
@@ -53,12 +54,14 @@ def train(args, device):
     content_dataset = torch.utils.data.Subset(content_dataset, subset_list)
     #print(len(content_dataset))
     style_dataset = [img for img in os.listdir(style_dataset_path)]
-    # sort on filter index
+    #sort on filter index
     style_dataset = sorted(style_dataset, key=lambda i: i[-5])
     #print(style_dataset)
 
     train_loader = DataLoader(content_dataset, batch_size=args.batch_size, shuffle=True)
     num_styles = len(style_dataset)
+    global total_filters
+    total_filters = num_styles
 
     PM = PasticheModel(num_styles).to(device)
     optimizer = Adam(PM.parameters(), args.lr)
@@ -150,31 +153,45 @@ def train(args, device):
 
 
 def gen_styles(args, device, model):
-    content_image = Image.open(os.path.join("images/content_images", args.content_image))
+    img_path = os.path.join("photos", args.content_image)
+    
+    content_image = Image.open(img_path).resize(eval_size)
+    # filters selection
+
+    masks = utils.get_masks(content_image, args.seg_threshold)
+    filter_ids = utils.select_filters(masks, content_image, total_filters)
+    
     content_transform = transforms.Compose([
-        transforms.Resize(eval_size),
+        #transforms.Resize(eval_size),
         transforms.ToTensor(),
         transforms.Lambda(lambda x: x.mul(255))
     ])
+    
     content_image = content_transform(content_image)
-    content_images = content_image.expand(len(args.style_id),-1,-1,-1).to(device)
-    #print(content_images.shape)
-    #content_image = content_image.unsqueeze(0).to(device)
-    #print(content_image.shape)
-
+    content_images = content_image.expand(len(filter_ids),-1,-1,-1).to(device)
+    # one forward pass to render themes
     with torch.no_grad():
         if args.load_model is None or args.load_model == "None" :
             style_model = model
         else:
-            style_model = torch.load(args.load_model)
+            style_model = torch.load(args.load_model,map_location={'cuda:3':'cuda:0'})
             style_model.eval()
         style_model.to(device)
-        output = style_model(content_images, args.style_id).cpu()
+        output = style_model(content_images, filter_ids).cpu()
+    
+    output_list = []
+    for img in output:
+        img = img.clone().clamp(0, 255).numpy()
+        img = img.transpose(1, 2, 0).astype("uint8")
+        output_list.append(img)
+ 
+    rendered_themes = utils.render_themes(output_list, filter_ids, masks)
+    utils.draw(rendered_themes, args.content_image, args.output_image)
 
-    #output = output.squeeze(0)
+    """
     for i in range(len(output)):
-        save_image(args.output_image + '/' + args.content_image.replace('.jpg', '_') +'filter' + str(args.style_id[i]+1) + '_level'+ str(args.filtering_level) + '.jpg', output[i])
-
+        save_image(args.output_image + '/' + str(i) + args.content_image.replace('.jpg', '_') + '_level'+ str(args.filtering_level) + '.jpg', output[i])
+    """
 
 def save_image(filename, image_data):
     img = image_data.clone().clamp(0, 255).numpy()
@@ -196,20 +213,22 @@ if __name__ == "__main__":
                         help="number of training epochs")
     parser.add_argument("--batch-size", type=int, default=5,
                         help="batch size for training")
-    parser.add_argument("--gpu", type=int, default=3,
+    parser.add_argument("--gpu", type=int, default=0,
                         help="GPU id. -1 for CPU")
     parser.add_argument("--lr", type=float, default=3e-4,
                         help="learning rate")
     parser.add_argument("--save", type=str, default="saved_models",
                         help="path to folder where trained models will be saved.")
-    parser.add_argument("--output-image", type=str, default="images/output_images",
+    parser.add_argument("--output-image", type=str, default="output",
                         help="path for saving the output image")
     parser.add_argument("--content-image", type=str, default="hoofer.jpg",
                                  help="name of content image you want to gen_styles")
-    parser.add_argument("--load-model", type=str, default=None,
+    parser.add_argument("--load-model", type=str, default="saved_models/Sat_Dec__5_12:41:33_2020_filter_level_2.6_epoch2.pth",
                         help="saved model to be used for stylizing the image if applicable")
-    parser.add_argument("--filtering-level", type=float, default=1.0,
+    parser.add_argument("--filtering-level", type=float, default=2.6,
                         help="A positive integer for degree of filtering.0 for no filter.")
+    parser.add_argument("--seg_threshold", type=float, default=0.9,
+                        help="Threshold for instance segmentation (between 0 and 1).")
     parser.add_argument("--style-id", type=list, default=[0,1,2,3,4,5,6,7,8],
                         help="style number id corresponding to the order in training")
 
